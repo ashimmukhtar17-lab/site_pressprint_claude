@@ -18,7 +18,6 @@ from num2words_ru import sum_in_words_tenge
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_PATH = os.path.join(HERE, "template.xlsx")
 COUNTER_PATH = os.path.join(HERE, "counter.json")
-SUPPLIER_DEFAULT_PATH = os.path.join(HERE, "supplier_default.json")
 
 ITEM_FIRST_ROW = 27
 ITEM_LAST_ROW = 34  # столько строк отформатировано в шаблоне под позиции
@@ -26,6 +25,15 @@ ITEM_LAST_ROW = 34  # столько строк отформатировано �
 
 def _fmt_money(n):
     return f"{n:,.0f}".replace(",", " ")
+
+
+def load_supplier(data):
+    if data.get("supplier"):
+        return data["supplier"]
+    profile = data.get("supplier_profile", "default")
+    path = os.path.join(HERE, f"supplier_{profile}.json")
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def next_invoice_number():
@@ -40,18 +48,29 @@ def next_invoice_number():
     return n
 
 
+def bump_counter(n):
+    last = 0
+    if os.path.exists(COUNTER_PATH):
+        with open(COUNTER_PATH) as f:
+            last = json.load(f).get("last", 0)
+    if n > last:
+        with open(COUNTER_PATH, "w") as f:
+            json.dump({"last": n}, f)
+
+
 def create_invoice(data: dict, out_path: str):
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
     ws = wb["Счет на оплату"]
 
-    supplier = data.get("supplier")
-    if not supplier:
-        with open(SUPPLIER_DEFAULT_PATH, encoding="utf-8") as f:
-            supplier = json.load(f)
+    supplier = load_supplier(data)
     buyer = data["buyer"]
     items = data["items"]
 
-    invoice_number = data.get("invoice_number") or next_invoice_number()
+    if data.get("invoice_number"):
+        invoice_number = data["invoice_number"]
+        bump_counter(invoice_number)
+    else:
+        invoice_number = next_invoice_number()
     invoice_date = data.get("invoice_date") or date.today().strftime("%d.%m.%Y")
 
     supplier_line = f'{supplier["name"]}, {supplier["address"]}'
